@@ -1,13 +1,14 @@
 package io.weather.sdk.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Getter;
 
 /**
  * @author rus.sadykov
  * 04.11.2025
  */
+@Getter
 public class WeatherData {
     @JsonProperty("weather")
     private final Weather weather;
@@ -36,15 +37,14 @@ public class WeatherData {
     private final Long lastUpdated;
 
     public WeatherData(
-            @JsonProperty("weather") Weather weather,
-            @JsonProperty("temperature") Temperature temperature,
-            @JsonProperty("visibility") Integer visibility,
-            @JsonProperty("wind") Wind wind,
-            @JsonProperty("datetime") Long datetime,
-            @JsonProperty("sys") Sys sys,
-            @JsonProperty("timezone") Integer timezone,
-            @JsonProperty("name") String name) {
-
+            Weather weather,
+            Temperature temperature,
+            Integer visibility,
+            Wind wind,
+            Long datetime,
+            Sys sys,
+            Integer timezone,
+            String name) {
         this.weather = weather;
         this.temperature = temperature;
         this.visibility = visibility;
@@ -56,50 +56,61 @@ public class WeatherData {
         this.lastUpdated = System.currentTimeMillis();
     }
 
-    public Weather weather() {
+    private static final long CACHE_TTL_MS = 10L * 60 * 1000; // 10 minutes
+
+    @JsonProperty("weather")
+    public Weather getWeather() {
         return weather;
     }
 
-    public Temperature temperature() {
+    @JsonProperty("temperature")
+    public Temperature getTemperature() {
         return temperature;
     }
 
-    public Integer visibility() {
+    @JsonProperty("visibility")
+    public Integer getVisibility() {
         return visibility;
     }
 
-    public Wind wind() {
+    @JsonProperty("wind")
+    public Wind getWind() {
         return wind;
     }
 
-    public Long datetime() {
+    @JsonProperty("datetime")
+    public Long getDatetime() {
         return datetime;
     }
 
-    public Sys sys() {
+    @JsonProperty("sys")
+    public Sys getSys() {
         return sys;
     }
 
-    public Integer timezone() {
+    @JsonProperty("timezone")
+    public Integer getTimezone() {
         return timezone;
     }
 
-    public String name() {
+    @JsonProperty("name")
+    public String getName() {
         return name;
     }
 
-    public Long lastUpdated() {
+    @JsonIgnore
+    public Long getLastUpdated() {
         return lastUpdated;
     }
 
-    public String toJson() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
-        return mapper.writeValueAsString(this);
+    @JsonIgnore
+    public boolean isDataFresh() {
+        return (System.currentTimeMillis() - lastUpdated) < (CACHE_TTL_MS);
     }
 
-    public boolean isDataFresh() {
-        return lastUpdated != null &&
-                (System.currentTimeMillis() - lastUpdated) < 10 * 60 * 1000; // 10 minutes
+    @JsonIgnore
+    public boolean isDataStale() {
+        return !isDataFresh();
     }
 
     @Override
