@@ -248,6 +248,12 @@ public class WeatherSDK implements AutoCloseable {
                 .orElse(null);
     }
 
+    /**
+     * Starts the polling mechanism for updating stale weather data in the cache.
+     * It will schedule a task to run at a fixed rate of {@link #POLLING_INTERVAL} milliseconds,
+     * which will update all stale weather data in the cache by fetching the latest weather data from the API.
+     * If there is an error while updating the stale weather data, it will log an error message.
+     */
     private void startPolling() {
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -258,6 +264,12 @@ public class WeatherSDK implements AutoCloseable {
         }, POLLING_INTERVAL, POLLING_INTERVAL, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Updates the stale weather data in the cache by fetching the latest weather data from the API.
+     * It will iterate over the cache and find all the entries that are stale (i.e. their data is older than the cache TTL).
+     * For each stale entry, it will fetch the latest weather data from the API and update the cache.
+     * If there is an error while fetching the weather data, it will log an error message.
+     */
     private void updateStaleWeatherData() {
         cache.entrySet().stream()
                 .filter(entry -> entry.getValue().isDataStale())
@@ -273,12 +285,22 @@ public class WeatherSDK implements AutoCloseable {
                 });
     }
 
+    /**
+     * Validates that the SDK is not shutdown before processing a request.
+     * If the SDK is shutdown, it will throw a WeatherSDKException.
+     * @throws WeatherSDKException if the SDK is shutdown
+     */
     private void validateNotShutdown() throws WeatherSDKException {
         if (isShutdown) {
             throw new WeatherSDKException("SDK is shutdown and cannot process requests");
         }
     }
 
+    /**
+     * Returns a map of statistics about the cache, including the current size, maximum allowed size, the set of cached cities, and the SDK mode.
+     *
+     * @return a map of cache statistics
+     */
     public Map<String, Object> getCacheStats() {
         Map<String, Object> stats = new ConcurrentHashMap<>();
         stats.put("size", cache.size());
@@ -288,6 +310,11 @@ public class WeatherSDK implements AutoCloseable {
         return stats;
     }
 
+    /**
+     * Closes the SDK and releases all associated resources.
+     * After calling this method, the SDK will not be able to process any requests.
+     * It will shut down the scheduler and clear the cache and city locks.
+     */
     @Override
     public void close() {
         isShutdown = true;
@@ -308,6 +335,13 @@ public class WeatherSDK implements AutoCloseable {
         cityLocks.clear();
     }
 
+    /**
+     * Creates a new instance of the WeatherSDK.
+     * @param apiKey the API key to use for requests to the weather service
+     * @param mode the SDK mode to use for requests to the weather service
+     * @return a new instance of the WeatherSDK
+     * @throws WeatherSDKException if the API key is null or empty, or the SDK mode is null
+     */
     static WeatherSDK createInstance(String apiKey, SDKMode mode) throws WeatherSDKException {
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new InvalidApiKeyException("API key cannot be null or empty");
