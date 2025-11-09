@@ -1,21 +1,33 @@
 package io.weather.sdk;
 
+import io.weather.sdk.config.SDKConfig;
 import io.weather.sdk.config.SDKMode;
 import io.weather.sdk.exception.WeatherSDKException;
+import lombok.experimental.UtilityClass;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+@UtilityClass
 public class WeatherSDKFactory {
     private static final Map<String, WeatherSDK> instances = new ConcurrentHashMap<>();
     private static final ReentrantLock factoryLock = new ReentrantLock();
 
-    private WeatherSDKFactory() {
+    public WeatherSDK createSDK(String apiKey, SDKMode mode) throws WeatherSDKException {
+        return createSDK(apiKey, mode, getDefaultConfigForMode(mode));
+    }
+
+    private SDKConfig getDefaultConfigForMode(SDKMode mode) {
+        return switch (mode) {
+            case ON_DEMAND -> SDKConfig.onDemandConfig();
+            case POLLING -> SDKConfig.pollingConfig();
+        };
     }
 
     /**
      * Creates a new WeatherSDK instance with the given API key and mode.
-     *
+
      * If the API key is null or empty, this method throws a WeatherSDKException.
      * If the SDK mode is null, this method throws a WeatherSDKException.
      * If an instance already exists for the given API key, this method throws a WeatherSDKException.
@@ -26,7 +38,7 @@ public class WeatherSDKFactory {
      * @return the new WeatherSDK instance
      * @throws WeatherSDKException if the API key is null or empty, or if an instance already exists for the given API key
      */
-    public static WeatherSDK createSDK(String apiKey, SDKMode mode) throws WeatherSDKException {
+    public static WeatherSDK createSDK(String apiKey, SDKMode mode, SDKConfig config) throws WeatherSDKException {
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new WeatherSDKException("API key cannot be null or empty");
         }
@@ -43,7 +55,7 @@ public class WeatherSDKFactory {
                 throw new WeatherSDKException("SDK instance already exists for this API key");
             }
 
-            WeatherSDK newInstance = WeatherSDK.createInstance(normalizedKey, mode);
+            WeatherSDK newInstance = WeatherSDK.createInstance(normalizedKey, mode, config);
             instances.put(normalizedKey, newInstance);
             return newInstance;
         } finally {
@@ -54,7 +66,7 @@ public class WeatherSDKFactory {
     /**
      * Removes the WeatherSDK instance associated with the given API key from the
      * factory's instance map. If the instance exists, it is also shut down.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked
      * exceptions.
      *
@@ -76,7 +88,7 @@ public class WeatherSDKFactory {
 
     /**
      * Checks if a WeatherSDK instance exists for the given API key.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
      *
      * @param apiKey the API key to check for
@@ -88,7 +100,7 @@ public class WeatherSDKFactory {
 
     /**
      * Returns the number of WeatherSDK instances currently managed by the factory.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
      *
      * @return the number of WeatherSDK instances currently managed by the factory
@@ -100,7 +112,7 @@ public class WeatherSDKFactory {
     /**
      * Shuts down all WeatherSDK instances currently managed by the factory.
      * This method closes all instances and removes them from the factory's instance map.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
      */
     public static void shutdownAll() {

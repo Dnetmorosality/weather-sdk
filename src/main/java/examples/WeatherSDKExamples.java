@@ -2,6 +2,7 @@ package examples;
 
 import io.weather.sdk.WeatherSDK;
 import io.weather.sdk.WeatherSDKFactory;
+import io.weather.sdk.config.SDKConfig;
 import io.weather.sdk.config.SDKMode;
 import io.weather.sdk.exception.WeatherSDKException;
 import lombok.extern.slf4j.Slf4j;
@@ -15,10 +16,9 @@ import java.util.Map;
 @Slf4j
 public class WeatherSDKExamples {
     // API keys are loaded from environment variables or system properties to avoid committing secrets.
-    // Prefer environment variables: WEATHER_API_KEY1 / WEATHER_API_KEY2
-    // Or JVM properties: -Dweather.api.key1=... / -Dweather.api.key2=...
-    private static final String VALID_API_KEY1 = requireApiKey("WEATHER_API_KEY1", "weather.api.key1");
-    private static final String VALID_API_KEY2 = requireApiKey("WEATHER_API_KEY2", "weather.api.key2");
+    // Prefer environment variables: WEATHER_API_KEY
+    // Or JVM properties: -Dweather.api.key=...
+    private static final String VALID_API_KEY = requireApiKey("WEATHER_API_KEY", "weather.api.key");
     private static final String BERLIN = "Berlin";
     private static final String LONDON = "London";
     private static final String NEW_YORK = "New York";
@@ -87,52 +87,47 @@ public class WeatherSDKExamples {
         log.info("Testing Factory instance management...");
 
         // Test 1: Create SDK instance
-        try (WeatherSDK sdk1 = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.ON_DEMAND)) {
+        try (WeatherSDK sdk1 = WeatherSDKFactory.createSDK(VALID_API_KEY, SDKMode.ON_DEMAND, SDKConfig.defaultConfig())) {
             log.info("✓ Successfully created first SDK instance");
             sdk1.getWeather(LONDON);
-
-            WeatherSDK sdk2 = WeatherSDKFactory.createSDK(VALID_API_KEY2, SDKMode.ON_DEMAND);
-            log.info("✓ Successfully created second SDK instance");
-            sdk2.getWeather(PARIS);
 
             // Test 2: Try to create duplicate instance with same API key
             testDuplicateInstanceCreation();
 
             // Test 3: Check instance existence
-            boolean exists = WeatherSDKFactory.hasInstance(VALID_API_KEY1);
+            boolean exists = WeatherSDKFactory.hasInstance(VALID_API_KEY);
             log.info("✓ Instance exists check: {}", exists);
 
             // Test 4: Remove instance and create again
-            WeatherSDKFactory.removeSDK(VALID_API_KEY1);
+            WeatherSDKFactory.removeSDK(VALID_API_KEY);
             log.info("✓ Instance removed successfully");
 
-            WeatherSDK sdk4 = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.POLLING);
+            WeatherSDK sdk4 = WeatherSDKFactory.createSDK(VALID_API_KEY, SDKMode.POLLING);
             log.info("✓ Successfully created new instance after removal");
 
             sdk4.close();
-            WeatherSDKFactory.removeSDK(VALID_API_KEY1);
+            WeatherSDKFactory.removeSDK(VALID_API_KEY);
 
         } catch (WeatherSDKException e) {
             log.error("Factory management test failed: {}", e.getMessage());
         } finally {
-            WeatherSDKFactory.removeSDK(VALID_API_KEY1);
-            WeatherSDKFactory.removeSDK(VALID_API_KEY2);
+            WeatherSDKFactory.removeSDK(VALID_API_KEY);
         }
     }
 
     /**
      * Tests the creation of duplicate WeatherSDK instances with the same API key.
-     *
+
      * This test method attempts to create a new WeatherSDK instance with the same API key
      * as an existing instance. If the WeatherSDK instance management correctly prevents
      * duplicate instance creation, the test will log an info message indicating that the
      * instance was correctly prevented.
-     *
+
      * If the WeatherSDK instance management fails to prevent duplicate instance creation,
      * the test will log an error message indicating that the duplicate instance was allowed.
      */
     private static void testDuplicateInstanceCreation() {
-        try (WeatherSDK sdk3 = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.POLLING)) {
+        try (WeatherSDK sdk3 = WeatherSDKFactory.createSDK(VALID_API_KEY, SDKMode.POLLING)) {
             sdk3.getWeather(ROME);
             log.error("✗ Should not allow duplicate instances");
         } catch (WeatherSDKException e) {
@@ -142,9 +137,9 @@ public class WeatherSDKExamples {
 
     /**
      * Demonstrates the On-Demand mode of the Weather SDK.
-     *
+
      * In this mode, the Weather SDK fetches data only when requested by the application.
-     *
+
      * This test method creates a new WeatherSDK instance in On-Demand mode, and then
      * requests the current weather for a city. The response time for the first request
      * is compared to the response time for the second request to verify that the cache
@@ -153,7 +148,7 @@ public class WeatherSDKExamples {
     private static void demoOnDemandMode() {
         log.info("Testing On-Demand mode (data fetched only on request)...");
 
-        try (WeatherSDK sdk = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.ON_DEMAND)) {
+        try (WeatherSDK sdk = WeatherSDKFactory.createSDK(VALID_API_KEY, SDKMode.ON_DEMAND)) {
 
             // Test cache miss - first request
             long startTime = System.currentTimeMillis();
@@ -182,15 +177,14 @@ public class WeatherSDKExamples {
         } catch (WeatherSDKException e) {
             log.error("On-Demand mode test failed: {}", e.getMessage());
         } finally {
-            WeatherSDKFactory.removeSDK(VALID_API_KEY1);
-            WeatherSDKFactory.removeSDK(VALID_API_KEY2);
+            WeatherSDKFactory.removeSDK(VALID_API_KEY);
         }
     }
 
     private static void demoPollingMode() {
         log.info("Testing Polling mode (background updates)...");
 
-        try (WeatherSDK sdk = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.POLLING)) {
+        try (WeatherSDK sdk = WeatherSDKFactory.createSDK(VALID_API_KEY, SDKMode.POLLING)) {
 
             // Populate cache with multiple cities
             String[] cities = {PARIS, BERLIN, TOKYO, NEW_YORK, SYDNEY};
@@ -207,12 +201,7 @@ public class WeatherSDKExamples {
             // Wait to see polling updates
             log.info("Waiting 15 seconds for polling updates...");
             for (int i = 1; i <= 3; i++) {
-                try {
-                    Thread.sleep(5000);
-                    Map<String, Object> currentStats = sdk.getCacheStats();
-                    log.info("  Polling update check {}: {}", i, currentStats);
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
+                if (!pollOnceAndLog(sdk, i)) {
                     break;
                 }
             }
@@ -222,14 +211,44 @@ public class WeatherSDKExamples {
         } catch (WeatherSDKException e) {
             log.error("Polling mode test failed: {}", e.getMessage());
         } finally {
-            WeatherSDKFactory.removeSDK(VALID_API_KEY1);
+            WeatherSDKFactory.removeSDK(VALID_API_KEY);
         }
     }
 
+    /**
+     * Sleeps for 5 seconds, fetches current cache stats and logs them.
+     * Returns false if the thread was interrupted (the interrupt flag is preserved), true otherwise.
+     */
+    private static boolean pollOnceAndLog(WeatherSDK sdk, int iteration) {
+        try {
+            Thread.sleep(5000);
+            Map<String, Object> currentStats = sdk.getCacheStats();
+            log.info("  Polling update check {}: {}", iteration, currentStats);
+            return true;
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Demonstrates advanced cache behavior of the Weather SDK, including:
+     * <ol>
+     * <li>Data freshness within 10 minutes</li>
+     * <li>Manual cache eviction</li>
+     * <li>Cache size limit (LRU behavior)</li>
+     * </ol>
+     *
+     * This method first tests data freshness within 10 minutes, then manually evicts
+     * a city from the cache and verifies that the cache miss is handled correctly.
+     * Finally, it tests the cache size limit (LRU behavior) by populating the cache
+     * with a large number of cities and verifying that the least recently used entries
+     * are evicted correctly.
+     */
     private static void demoCacheBehavior() {
         log.info("Testing advanced cache behavior...");
 
-        try (WeatherSDK sdk = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.ON_DEMAND)) {
+        try (WeatherSDK sdk = WeatherSDKFactory.createSDK(VALID_API_KEY, SDKMode.ON_DEMAND)) {
 
             // Test 1: Data freshness within 10 minutes
             sdk.getWeather(ROME);
@@ -263,7 +282,7 @@ public class WeatherSDKExamples {
         } catch (WeatherSDKException e) {
             log.error("Cache behavior test failed: {}", e.getMessage());
         } finally {
-            WeatherSDKFactory.removeSDK(VALID_API_KEY1);
+            WeatherSDKFactory.removeSDK(VALID_API_KEY);
         }
     }
 }
