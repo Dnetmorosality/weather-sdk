@@ -15,6 +15,7 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>6.0.1</junit.version>
+        <mokito.junit.version>5.20.0</mokito.junit.version>
         <slf4j.version>2.0.13</slf4j.version>
         <logback.version>1.5.20</logback.version>
         <jackson.version>3.0.1</jackson.version>
@@ -60,7 +61,7 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-junit-jupiter</artifactId>
-            <version>5.20.0</version>
+            <version>${mokito.junit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
