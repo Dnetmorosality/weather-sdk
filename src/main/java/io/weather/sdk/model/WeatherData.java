@@ -10,6 +10,8 @@ import lombok.Getter;
  */
 @Getter
 public class WeatherData {
+    private static final long CACHE_TTL_MS = 10L * 60 * 1000; // 10 minutes
+
     @JsonProperty("weather")
     private final Weather weather;
 
@@ -56,7 +58,6 @@ public class WeatherData {
         this.lastUpdated = System.currentTimeMillis();
     }
 
-    private static final long CACHE_TTL_MS = 10L * 60 * 1000; // 10 minutes
 
     @JsonProperty("weather")
     public Weather getWeather() {
@@ -99,13 +100,8 @@ public class WeatherData {
     }
 
     @JsonIgnore
-    public Long getLastUpdated() {
-        return lastUpdated;
-    }
-
-    @JsonIgnore
     public boolean isDataFresh() {
-        return (System.currentTimeMillis() - lastUpdated) < (CACHE_TTL_MS);
+        return (System.currentTimeMillis() - lastUpdated) < CACHE_TTL_MS;
     }
 
     @JsonIgnore
