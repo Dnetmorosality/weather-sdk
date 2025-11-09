@@ -41,9 +41,8 @@ I didn't have time for my own projects, but then I was offered an interesting ta
 
 ## 📸 Demo
 
-This demonstration shows the SDK's comprehensive capabilities including factory management, on-demand mode, polling mode, and cache behavior.
-
-![Weather SDK Demo](https://github.com/Dnetmorosality/weather-sdk/blob/main/assets/weather-sdk-demo.gif?raw=true)
+This demonstration shows the SDK
+<img src="https://https://github.com/Dnetmorosality/weather-sdk/tree/develop/src/main/java/examples/demo.gif?raw=true" width="100%"/>
 
 ## 🎚 Features
 
