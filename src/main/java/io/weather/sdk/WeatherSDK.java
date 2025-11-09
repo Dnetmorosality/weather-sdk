@@ -1,16 +1,14 @@
 package io.weather.sdk;
 
 import io.weather.sdk.cache.LRUCache;
-import io.weather.sdk.config.RetryConfig;
 import io.weather.sdk.config.SDKConfig;
-import io.weather.sdk.util.RetryableWeatherFetcher;
-import lombok.RequiredArgsConstructor;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import io.weather.sdk.config.SDKMode;
 import io.weather.sdk.exception.*;
 import io.weather.sdk.model.*;
+import io.weather.sdk.util.RetryableWeatherFetcher;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,9 +25,6 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 @Slf4j
 public class WeatherSDK implements AutoCloseable {
-    private static final int MAX_CACHE_SIZE = 10;
-    private static final long POLLING_INTERVAL = 5L * 60 * 1000; // 5 minutes
-    private static final long HTTP_TIMEOUT_SECONDS = 30;
     private static final String JSON_KEY_WEATHER = "weather";
 
     private final String apiKey;
@@ -52,7 +47,7 @@ public class WeatherSDK implements AutoCloseable {
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.objectMapper = new ObjectMapper();
-        this.cache = new LRUCache<>(MAX_CACHE_SIZE);
+        this.cache = new LRUCache<>(this.config.getCacheSize());
         this.cityLocks = new ConcurrentHashMap<>();
         this.pollingTasks = ConcurrentHashMap.newKeySet();
         if (mode == SDKMode.POLLING) {
@@ -61,7 +56,7 @@ public class WeatherSDK implements AutoCloseable {
         } else {
             this.scheduler = null;
         }
-        this.retryFetcher = new RetryableWeatherFetcher(config.getRetryConfig());
+        this.retryFetcher = new RetryableWeatherFetcher(this.config.getRetryConfig());
     }
 
     /**
@@ -96,7 +91,7 @@ public class WeatherSDK implements AutoCloseable {
                 return convertToJson(cachedData.get());
             }
 
-            WeatherData freshData = fetchWeatherWithRetry(cityName);
+            WeatherData freshData = fetchWeatherFromAPI(cityName);
             cache.put(normalizedCityName, freshData);
             return convertToJson(freshData);
         } finally {
@@ -111,6 +106,7 @@ public class WeatherSDK implements AutoCloseable {
     /**
      * Normalizes a city name by stripping leading/trailing whitespace and converting to lower case.
      * This method is used to normalize city names before caching and retrieving weather data.
+     *
      * @param cityName the city name to normalize
      * @return the normalized city name
      */
@@ -140,7 +136,7 @@ public class WeatherSDK implements AutoCloseable {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
-                        .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS))
+                        .timeout(config.getHttpTimeout())
                         .header("Accept", "application/json")
                         .GET()
                         .build();
@@ -156,53 +152,15 @@ public class WeatherSDK implements AutoCloseable {
             }
         });
     }
-}
 
-    private void exponentialBackoff(int retryCount) throws InterruptedException {
-        RetryConfig retryConfig = config.getRetryConfig();
-        long delayMs = Math.min(
-                retryConfig.getBaseDelayMs() * (1L << retryCount),
-                retryConfig.getMaxDelayMs()
-        );
-
-        double jitter = retryConfig.getJitterFactor() * delayMs * (2 * Math.random() - 1);
-        long finalDelayMs = Math.max(100, (long) (delayMs + jitter));
-
-        Thread.sleep(finalDelayMs);
-    }
-
-    private WeatherData fetchWeatherWithRetry(String cityName) throws WeatherSDKException {
-        int maxRetries = 3;
-        int retryCount = 0;
-
-        while (true) {
-            try {
-                return fetchWeatherFromAPI(cityName);
-            } catch (ApiUnavailableException | RateLimitExceededException e) {
-                if (retryCount >= maxRetries) {
-                    log.warn("Max retries ({}) exceeded for city: {}", maxRetries, cityName);
-                    throw e;
-                }
-
-                try {
-                    exponentialBackoff(retryCount);
-                    retryCount++;
-                    log.debug("Retry attempt {} for city: {}", retryCount, cityName);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new WeatherSDKException("Retry interrupted for city: " + cityName, ie);
-                }
-            }
-        }
-    }
 
     /**
      * Handles the response from the OpenWeatherMap API.
-     *
+     * <p>
      * This method takes the HTTP response from the API and the city name associated with the request,
      * and returns the parsed weather data if the response is successful (200 OK).
      * If the response is not successful, it throws a WeatherSDKException with a descriptive error message.
-     *
+     * <p>
      * The following errors are handled by this method:
      * - 401: Invalid API key
      * - 404: City not found
@@ -232,17 +190,17 @@ public class WeatherSDK implements AutoCloseable {
 
     /**
      * Parses the given JSON response from the OpenWeatherMap API into a WeatherData object.
-     *
+     * <p>
      * This method takes the JSON response from the API and the city name associated with the request,
      * and returns the parsed weather data if the response is valid.
      * If the response is invalid, it throws a WeatherSDKException with a descriptive error message.
-     *
+     * <p>
      * The following errors are handled by this method:
      * - Invalid JSON: throws a WeatherSDKException with a descriptive error message
      * - Missing weather data: throws a WeatherSDKException with a descriptive error message
      *
      * @param jsonResponse the JSON response from the API
-     * @param cityName the city name associated with the request
+     * @param cityName     the city name associated with the request
      * @return the parsed weather data if the response is valid
      * @throws WeatherSDKException if the response is invalid
      */
@@ -294,7 +252,7 @@ public class WeatherSDK implements AutoCloseable {
 
     /**
      * Converts the given WeatherData object to a JSON string.
-     *
+     * <p>
      * This method takes the given WeatherData object and serializes it into a JSON string.
      * If any errors occur during the serialization, a WeatherSDKException is thrown with a descriptive error message.
      *
@@ -323,7 +281,7 @@ public class WeatherSDK implements AutoCloseable {
             } catch (Exception e) {
                 log.error("Error during polling update: {}", e.getMessage(), e);
             }
-        }, POLLING_INTERVAL, POLLING_INTERVAL, TimeUnit.MILLISECONDS);
+        }, config.getPollingIntervalMs(), config.getPollingIntervalMs(), TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -331,7 +289,7 @@ public class WeatherSDK implements AutoCloseable {
      * This method uses the current set of city locks to iterate over all cities that have
      * stale weather data, and schedules a fixed-rate task to update each city's
      * weather data.
-     *
+     * <p>
      * If any errors occur during the polling update, the error will be logged.
      */
     private void updateStaleWeatherData() {
@@ -362,7 +320,7 @@ public class WeatherSDK implements AutoCloseable {
      * is stale. If the weather data is stale, it fetches fresh weather
      * data from the OpenWeatherMap API and updates the cache with the fresh
      * data.
-     *
+     * <p>
      * If any errors occur during the polling update, the error will be
      * logged.
      *
@@ -392,7 +350,7 @@ public class WeatherSDK implements AutoCloseable {
 
     /**
      * Validates that the SDK has not been shut down.
-     *
+     * <p>
      * This method checks if the SDK has been shut down and throws a WeatherSDKException
      * if it has. This is used to prevent any requests from being processed after the
      * SDK has been shut down.
@@ -407,7 +365,7 @@ public class WeatherSDK implements AutoCloseable {
 
     /**
      * Returns a map containing the current cache statistics.
-     *
+     * <p>
      * The returned map contains the following statistics:
      * <ul>
      * <li>size: the current number of entries in the cache</li>
@@ -431,7 +389,7 @@ public class WeatherSDK implements AutoCloseable {
 
     /**
      * Removes the given city name from the cache and the city locks.
-     *
+     * <p>
      * This method takes a city name and removes the corresponding weather data from the cache
      * and the city lock. This method is thread-safe and does not throw any checked or unchecked
      * exceptions.
@@ -447,18 +405,9 @@ public class WeatherSDK implements AutoCloseable {
     }
 
     /**
-     * Clears the cache and removes all city locks.
-     * This method is thread-safe and does not throw any checked or unchecked exceptions.
-     */
-    public void clearCache() {
-        cache.clear();
-        cityLocks.clear();
-    }
-
-    /**
      * Closes the WeatherSDK instance and stops all background polling tasks.
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
-     *
+     * <p>
      * After calling this method, all WeatherSDK instances will be closed and
      * the factory will be reset to its initial state.
      */
@@ -493,7 +442,7 @@ public class WeatherSDK implements AutoCloseable {
      * If the SDK mode is null, this method throws a WeatherSDKException.
      *
      * @param apiKey the API key to use for the SDK instance
-     * @param mode the mode of the SDK instance
+     * @param mode   the mode of the SDK instance
      * @return the created SDK instance
      * @throws WeatherSDKException if the API key is null or empty, or the SDK mode is null
      */

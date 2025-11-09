@@ -27,7 +27,7 @@ public class WeatherSDKFactory {
 
     /**
      * Creates a new WeatherSDK instance with the given API key and mode.
-     *
+
      * If the API key is null or empty, this method throws a WeatherSDKException.
      * If the SDK mode is null, this method throws a WeatherSDKException.
      * If an instance already exists for the given API key, this method throws a WeatherSDKException.
@@ -66,7 +66,7 @@ public class WeatherSDKFactory {
     /**
      * Removes the WeatherSDK instance associated with the given API key from the
      * factory's instance map. If the instance exists, it is also shut down.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked
      * exceptions.
      *
@@ -88,7 +88,7 @@ public class WeatherSDKFactory {
 
     /**
      * Checks if a WeatherSDK instance exists for the given API key.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
      *
      * @param apiKey the API key to check for
@@ -100,7 +100,7 @@ public class WeatherSDKFactory {
 
     /**
      * Returns the number of WeatherSDK instances currently managed by the factory.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
      *
      * @return the number of WeatherSDK instances currently managed by the factory
@@ -112,7 +112,7 @@ public class WeatherSDKFactory {
     /**
      * Shuts down all WeatherSDK instances currently managed by the factory.
      * This method closes all instances and removes them from the factory's instance map.
-     *
+
      * This method is thread-safe and does not throw any checked or unchecked exceptions.
      */
     public static void shutdownAll() {

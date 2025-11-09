@@ -29,16 +29,16 @@ public class SDKConfig {
 
     public static SDKConfig onDemandConfig() {
         return SDKConfig.builder()
-                .cacheSize(20)
-                .cacheTtlMs(300_000) // 5 minutes for on-demand
+                .cacheSize(10)
+                .cacheTtlMs(600_000) // 10 minutes for on-demand
                 .build();
     }
 
     public static SDKConfig pollingConfig() {
         return SDKConfig.builder()
-                .cacheSize(50)
-                .pollingIntervalMs(120_000) // 2 minutes for polling
-                .cacheTtlMs(300_000) // 5 minutes
+                .cacheSize(10)
+                .pollingIntervalMs(300_000) // 5 minutes for polling
+                .cacheTtlMs(600_000) // 10 minutes
                 .build();
     }
 }
