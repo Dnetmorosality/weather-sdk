@@ -2,6 +2,7 @@ package examples;
 
 import io.weather.sdk.WeatherSDK;
 import io.weather.sdk.WeatherSDKFactory;
+import io.weather.sdk.config.SDKConfig;
 import io.weather.sdk.config.SDKMode;
 import io.weather.sdk.exception.WeatherSDKException;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +38,7 @@ public class WeatherSDKExamples {
      * It also shuts down all remaining instances after the demonstration is
      * completed.
      */
-    static void main() {
+    public static void main(String[] args) {
         try {
             log.info("=== WEATHER SDK COMPREHENSIVE DEMONSTRATION ===");
 
@@ -87,11 +88,11 @@ public class WeatherSDKExamples {
         log.info("Testing Factory instance management...");
 
         // Test 1: Create SDK instance
-        try (WeatherSDK sdk1 = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.ON_DEMAND)) {
+        try (WeatherSDK sdk1 = WeatherSDKFactory.createSDK(VALID_API_KEY1, SDKMode.ON_DEMAND, SDKConfig.defaultConfig())) {
             log.info("✓ Successfully created first SDK instance");
             sdk1.getWeather(LONDON);
 
-            WeatherSDK sdk2 = WeatherSDKFactory.createSDK(VALID_API_KEY2, SDKMode.ON_DEMAND);
+            WeatherSDK sdk2 = WeatherSDKFactory.createSDK(VALID_API_KEY2, SDKMode.ON_DEMAND, SDKConfig.defaultConfig());
             log.info("✓ Successfully created second SDK instance");
             sdk2.getWeather(PARIS);
 

@@ -1,16 +1,28 @@
 package io.weather.sdk;
 
+import io.weather.sdk.config.SDKConfig;
 import io.weather.sdk.config.SDKMode;
 import io.weather.sdk.exception.WeatherSDKException;
+import lombok.experimental.UtilityClass;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+@UtilityClass
 public class WeatherSDKFactory {
     private static final Map<String, WeatherSDK> instances = new ConcurrentHashMap<>();
     private static final ReentrantLock factoryLock = new ReentrantLock();
 
-    private WeatherSDKFactory() {
+    public WeatherSDK createSDK(String apiKey, SDKMode mode) throws WeatherSDKException {
+        return createSDK(apiKey, mode, getDefaultConfigForMode(mode));
+    }
+
+    private SDKConfig getDefaultConfigForMode(SDKMode mode) {
+        return switch (mode) {
+            case ON_DEMAND -> SDKConfig.onDemandConfig();
+            case POLLING -> SDKConfig.pollingConfig();
+        };
     }
 
     /**
@@ -26,7 +38,7 @@ public class WeatherSDKFactory {
      * @return the new WeatherSDK instance
      * @throws WeatherSDKException if the API key is null or empty, or if an instance already exists for the given API key
      */
-    public static WeatherSDK createSDK(String apiKey, SDKMode mode) throws WeatherSDKException {
+    public static WeatherSDK createSDK(String apiKey, SDKMode mode, SDKConfig config) throws WeatherSDKException {
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new WeatherSDKException("API key cannot be null or empty");
         }
@@ -43,7 +55,7 @@ public class WeatherSDKFactory {
                 throw new WeatherSDKException("SDK instance already exists for this API key");
             }
 
-            WeatherSDK newInstance = WeatherSDK.createInstance(normalizedKey, mode);
+            WeatherSDK newInstance = WeatherSDK.createInstance(normalizedKey, mode, config);
             instances.put(normalizedKey, newInstance);
             return newInstance;
         } finally {

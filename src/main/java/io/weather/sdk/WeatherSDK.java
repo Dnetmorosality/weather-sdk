@@ -1,6 +1,10 @@
 package io.weather.sdk;
 
 import io.weather.sdk.cache.LRUCache;
+import io.weather.sdk.config.RetryConfig;
+import io.weather.sdk.config.SDKConfig;
+import io.weather.sdk.util.RetryableWeatherFetcher;
+import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import io.weather.sdk.config.SDKMode;
@@ -30,17 +34,20 @@ public class WeatherSDK implements AutoCloseable {
 
     private final String apiKey;
     private final SDKMode mode;
+    private final SDKConfig config;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final LRUCache<String, WeatherData> cache;
     private final ScheduledExecutorService scheduler;
     private final Map<String, ReentrantLock> cityLocks;
     private final Set<CompletableFuture<Void>> pollingTasks;
+    private final RetryableWeatherFetcher retryFetcher;
     private volatile boolean isShutdown = false;
 
-    private WeatherSDK(String apiKey, SDKMode mode) {
-        this.apiKey = apiKey;
-        this.mode = mode;
+    private WeatherSDK(String apiKey, SDKMode mode, SDKConfig config) {
+        this.apiKey = Objects.requireNonNull(apiKey, "API key cannot be null");
+        this.mode = Objects.requireNonNull(mode, "SDK mode cannot be null");
+        this.config = config != null ? config : SDKConfig.defaultConfig();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -54,6 +61,7 @@ public class WeatherSDK implements AutoCloseable {
         } else {
             this.scheduler = null;
         }
+        this.retryFetcher = new RetryableWeatherFetcher(config.getRetryConfig());
     }
 
     /**
@@ -83,17 +91,21 @@ public class WeatherSDK implements AutoCloseable {
         lock.lock();
         try {
             Optional<WeatherData> cachedData = cache.get(normalizedCityName);
-            if (cachedData.isPresent() && cachedData.get().isDataFresh()) {
+            if (cachedData.isPresent() && isDataFresh(cachedData.get())) {
                 log.debug("Returning cached weather data for: {}", normalizedCityName);
                 return convertToJson(cachedData.get());
             }
 
-            WeatherData freshData = fetchWeatherFromAPI(cityName);
+            WeatherData freshData = fetchWeatherWithRetry(cityName);
             cache.put(normalizedCityName, freshData);
             return convertToJson(freshData);
         } finally {
             lock.unlock();
         }
+    }
+
+    private boolean isDataFresh(WeatherData weatherData) {
+        return (System.currentTimeMillis() - weatherData.getLastUpdated()) < config.getCacheTtlMs();
     }
 
     /**
@@ -124,24 +136,63 @@ public class WeatherSDK implements AutoCloseable {
                 apiKey
         );
 
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS))
-                    .header("Accept", "application/json")
-                    .GET()
-                    .build();
+        return retryFetcher.fetchWithRetry(cityName, () -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS))
+                        .header("Accept", "application/json")
+                        .GET()
+                        .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return handleApiResponse(response, cityName);
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                return handleApiResponse(response, cityName);
 
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new WeatherSDKException("Thread was interrupted while calling weather API", e);
-        } catch (WeatherSDKException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new WeatherSDKException("Failed to connect to weather API: " + e.getMessage(), e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new WeatherSDKException("Thread was interrupted while calling weather API", e);
+            } catch (Exception e) {
+                throw new WeatherSDKException("Failed to connect to weather API: " + e.getMessage(), e);
+            }
+        });
+    }
+}
+
+    private void exponentialBackoff(int retryCount) throws InterruptedException {
+        RetryConfig retryConfig = config.getRetryConfig();
+        long delayMs = Math.min(
+                retryConfig.getBaseDelayMs() * (1L << retryCount),
+                retryConfig.getMaxDelayMs()
+        );
+
+        double jitter = retryConfig.getJitterFactor() * delayMs * (2 * Math.random() - 1);
+        long finalDelayMs = Math.max(100, (long) (delayMs + jitter));
+
+        Thread.sleep(finalDelayMs);
+    }
+
+    private WeatherData fetchWeatherWithRetry(String cityName) throws WeatherSDKException {
+        int maxRetries = 3;
+        int retryCount = 0;
+
+        while (true) {
+            try {
+                return fetchWeatherFromAPI(cityName);
+            } catch (ApiUnavailableException | RateLimitExceededException e) {
+                if (retryCount >= maxRetries) {
+                    log.warn("Max retries ({}) exceeded for city: {}", maxRetries, cityName);
+                    throw e;
+                }
+
+                try {
+                    exponentialBackoff(retryCount);
+                    retryCount++;
+                    log.debug("Retry attempt {} for city: {}", retryCount, cityName);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new WeatherSDKException("Retry interrupted for city: " + cityName, ie);
+                }
+            }
         }
     }
 
@@ -370,9 +421,11 @@ public class WeatherSDK implements AutoCloseable {
     public Map<String, Object> getCacheStats() {
         Map<String, Object> stats = new ConcurrentHashMap<>();
         stats.put("size", cache.size());
-        stats.put("max_size", MAX_CACHE_SIZE);
+        stats.put("max_size", config.getCacheSize());
         stats.put("mode", mode.toString());
         stats.put("active_polling_tasks", pollingTasks.size());
+        stats.put("cache_ttl_ms", config.getCacheTtlMs());
+        stats.put("polling_interval_ms", config.getPollingIntervalMs());
         return stats;
     }
 
@@ -444,13 +497,13 @@ public class WeatherSDK implements AutoCloseable {
      * @return the created SDK instance
      * @throws WeatherSDKException if the API key is null or empty, or the SDK mode is null
      */
-    static WeatherSDK createInstance(String apiKey, SDKMode mode) throws WeatherSDKException {
+    static WeatherSDK createInstance(String apiKey, SDKMode mode, SDKConfig config) throws WeatherSDKException {
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new InvalidApiKeyException("API key cannot be null or empty");
         }
         if (mode == null) {
             throw new WeatherSDKException("SDK mode cannot be null");
         }
-        return new WeatherSDK(apiKey.trim(), mode);
+        return new WeatherSDK(apiKey.trim(), mode, config);
     }
 }
