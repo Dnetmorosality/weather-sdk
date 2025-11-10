@@ -42,7 +42,7 @@ I didn't have time for my own projects, but then I was offered an interesting ta
 ## 📸 Demo
 
 This demonstration shows the SDK
-<img src="https://https://github.com/Dnetmorosality/weather-sdk/tree/develop/src/main/java/examples/demo.gif?raw=true" width="100%"/>
+<img src="[https://https://github.com/Dnetmorosality/weather-sdk/tree/develop/src/main/java/examples/demo.gif](https://github.com/Dnetmorosality/weather-sdk/blob/develop/src/main/java/examples/demo.gif)?raw=true" width="100%"/>
 
 ## 🎚 Features
 
